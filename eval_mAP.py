@@ -13,13 +13,14 @@ import torch.optim as optim
 
 import utils.config as cnf
 from utils.kitti_yolo_dataset import KittiYOLODataset
+import warnings
 
 def evaluate(model, iou_thres, conf_thres, nms_thres, img_size, batch_size):
     model.eval()
 
     # Get dataloader
     split='valid'
-    dataset = KittiYOLODataset(cnf.root_dir, split=split, mode='EVAL', folder='training', data_aug=False)
+    dataset = KittiYOLODataset(cnf.root_dir, split=split, mode='EVAL', folder='testing', data_aug=False)
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=False, num_workers=1, collate_fn=dataset.collate_fn
     )
@@ -44,14 +45,18 @@ def evaluate(model, iou_thres, conf_thres, nms_thres, img_size, batch_size):
         sample_metrics += get_batch_statistics_rotated_bbox(outputs, targets, iou_threshold=iou_thres)
 
     # Concatenate sample statistics
-    true_positives, pred_scores, pred_labels = [np.concatenate(x, 0) for x in list(zip(*sample_metrics))]
+    if not sample_metrics:
+        true_positives, pred_scores, pred_labels = np.array([0]), np.array([0]), np.array([0])
+        warnings.warn("sample_metrics is empty. This indicates poor model training performance.")
+    else:
+        true_positives, pred_scores, pred_labels = [np.concatenate(x, 0) for x in list(zip(*sample_metrics))]
     precision, recall, AP, f1, ap_class = ap_per_class(true_positives, pred_scores, pred_labels, labels)
 
     return precision, recall, AP, f1, ap_class
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=10, help="size of each image batch")
+    parser.add_argument("--batch_size", type=int, default=2, help="size of each image batch")
     parser.add_argument("--model_def", type=str, default="config/complex_tiny_yolov3.cfg", help="path to model definition file")
     parser.add_argument("--weights_path", type=str, default="checkpoints/tiny-yolov3_ckpt_epoch-220.pth", help="path to weights file")
     parser.add_argument("--class_path", type=str, default="data/classes.names", help="path to class label file")
