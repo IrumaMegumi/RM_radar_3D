@@ -21,7 +21,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_data_batch_size", type=int, default=10, help="size of each image batch")
     parser.add_argument("--test_data_batch_size",type=int, default=10,help="size of each image batch for test loader")
     parser.add_argument("--gradient_accumulations", type=int, default=2, help="number of gradient accums before step")
-    parser.add_argument("--model_def", type=str, default="config/complex_yolov3.cfg", help="path to model definition file")
+    parser.add_argument("--model_def", type=str, default="config/complex_tiny_yolov3.cfg", help="path to model definition file")
     parser.add_argument("--pretrained_weights", type=str,default=None, help="if specified starts from checkpoint model")
     parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
     parser.add_argument("--img_size", type=int, default=cnf.BEV_WIDTH, help="size of each image dimension")
@@ -32,14 +32,14 @@ if __name__ == "__main__":
 
     logger = Logger("logs")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    os.makedirs("checkpoints", exist_ok=True)
+    os.makedirs("ckpt", exist_ok=True)
     class_names = load_classes("data/classes.names")
 
     # Initiate model
     model = Darknet(opt.model_def, img_size=opt.img_size).to(device)
     model.apply(weights_init_normal)
 
-    # If specified we start from checkpoint
+    #加载预训练模型权重的
     if opt.pretrained_weights:
         if opt.pretrained_weights.endswith(".pth"):
             model.load_state_dict(torch.load(opt.pretrained_weights))
@@ -93,8 +93,8 @@ if __name__ == "__main__":
         start_time = time.time()
 
         #returns BEV figure and bboxes
-        for batch_i, (_, imgs, targets) in enumerate(tqdm(dataloader,desc="Training")):
-
+        for batch_i, (_, imgs, figs, _, targets, data_aug_dict) in enumerate(tqdm(dataloader,desc="Training")):
+            #这里的imgs是BEV特征图,figs是图像
             #考虑显存过小的时候进行梯度累计,我这里将会使用它进行Loss的计算
             batches_done = len(dataloader) * epoch + batch_i
 
@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
             train_loss_cur_epoch=0.0
             optimizer.zero_grad()
-            loss, outputs = model(imgs, targets)
+            loss, outputs = model(imgs, targets) #走的是forward函数
             loss.backward()
             optimizer.step()
 

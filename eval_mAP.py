@@ -20,7 +20,7 @@ def evaluate(model, iou_thres, conf_thres, nms_thres, img_size, batch_size):
 
     # Get dataloader
     split='valid'
-    dataset = KittiYOLODataset(cnf.root_dir, split=split, mode='EVAL', folder='testing', data_aug=False)
+    dataset = KittiYOLODataset(cnf.root_dir, split=split, mode='EVAL', folder='training', data_aug=False)
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=False, num_workers=1, collate_fn=dataset.collate_fn
     )
@@ -29,7 +29,7 @@ def evaluate(model, iou_thres, conf_thres, nms_thres, img_size, batch_size):
 
     labels = []
     sample_metrics = []  # List of tuples (TP, confs, pred)
-    for batch_i, (_, imgs, targets) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
+    for batch_i, (_, imgs, figs, points,  targets, image_aug_matrix, lidar_aug_matrix, lss_calib_matrix) in enumerate(tqdm.tqdm(dataloader, desc="Detecting objects")):
 
         # Extract labels
         labels += targets[:, 1].tolist()
@@ -37,9 +37,14 @@ def evaluate(model, iou_thres, conf_thres, nms_thres, img_size, batch_size):
         targets[:, 2:] *= img_size
 
         imgs = Variable(imgs.type(Tensor), requires_grad=False)
-
+        figs = figs.to(device)
+        points = [point.to(device) for point in points]
+        for key,value in lss_calib_matrix.items():
+            lss_calib_matrix[key] = value.to(device)
+        image_aug_matrix = image_aug_matrix.to(device)
+        lidar_aug_matrix=lidar_aug_matrix.to(device)
         with torch.no_grad():
-            outputs = model(imgs)
+            outputs = model(imgs, figs, points, image_aug_matrix, lidar_aug_matrix, lss_calib_matrix)
             outputs = non_max_suppression_rotated_bbox(outputs, conf_thres=conf_thres, nms_thres=nms_thres)
 
         sample_metrics += get_batch_statistics_rotated_bbox(outputs, targets, iou_threshold=iou_thres)

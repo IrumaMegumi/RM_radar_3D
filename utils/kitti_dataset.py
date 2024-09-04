@@ -25,10 +25,9 @@ class KittiDataset(torch_data.Dataset):
         else:
             self.files = sorted(glob.glob("%s/*.bin" % self.lidar_path))
             self.image_idx_list = [os.path.split(x)[1].split(".")[0].strip() for x in self.files]
-            print(self.image_idx_list[0])
 
         self.num_samples = self.image_idx_list.__len__()
-
+        
     def get_image(self, idx):
         img_file = os.path.join(self.image_path, '%06d.png' % idx)
         assert os.path.exists(img_file)

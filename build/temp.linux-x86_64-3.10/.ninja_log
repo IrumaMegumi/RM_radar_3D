@@ -1,0 +1,24 @@
+# ninja log v5
+1	11559	1725087220661514115	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/spconv/src/reordering.o	e2241c9a59a5b744
+0	13583	1725087222688636096	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/spconv/src/maxpool.o	f0c15821a107787f
+0	16015	1725087225108778289	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/spconv/src/indice.o	263a5cc42305dfc
+0	29204	1725087238297489500	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/spconv/src/all.o	2e37dcf17f32107b
+0	40162	1725087249260004553	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/spconv/src/indice_cuda.o	1cca88331e4f5e6c
+1	40903	1725087250003037170	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/spconv/src/reordering_cuda.o	d42bb3a19c93b8ba
+0	42157	1725087251259091519	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/spconv/src/maxpool_cuda.o	4901ccc67df96ecc
+2	1340	1725087253094169561	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/bev_pool/src/bev_pool_cuda.o	e5c69ef3372dd6be
+2	14394	1725087266143676316	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/bev_pool/src/bev_pool.o	8ecd30be1272f7cf
+2	5531	1725087272068880111	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/iou3d/src/iou3d_kernel.o	81de557f31e10389
+2	15072	1725087281604175989	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/iou3d/src/iou3d.o	80c545da388d2845
+3	23806	1725087305760766057	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/voxel/src/voxelization_cpu.o	96fd835bb6d0ab98
+2	23979	1725087305943769749	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/voxel/src/voxelization.o	58262d571d689a4
+2	27509	1725087309475838385	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/voxel/src/scatter_points_cpu.o	dd0619f7bec8a89c
+2	42056	1725087324024079448	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/voxel/src/scatter_points_cuda.o	ec7ab29d2ef1af05
+3	43266	1725087325233096577	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/voxel/src/voxelization_cuda.o	10b3116e4c6e62fb
+2	20977	1725087346688334252	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/roiaware_pool3d/src/points_in_boxes_cpu.o	a0d6197f434256ed
+3	21254	1725087346966336573	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/roiaware_pool3d/src/roiaware_pool3d.o	fe67f2b6d8f349fa
+3	45552	1725087371267469124	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/roiaware_pool3d/src/points_in_boxes_cuda.o	ba1a64def7d6c6fa
+3	45808	1725087371528469854	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/roiaware_pool3d/src/roiaware_pool3d_kernel.o	58da48c2f68f4c1b
+4	1059	1725087373031473847	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/ball_query/src/ball_query_cuda.o	fb9a2a06e9534b84
+16	1108	1725090497405527635	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/bev_pool/src/bev_pool_cuda.o	4b664c722f88018b
+16	14371	1725090510665586190	/workspaces/yolo3d_docker/RM_radar_3D/build/temp.linux-x86_64-3.10/mmdet3d/ops/bev_pool/src/bev_pool.o	ada79e6b69731332

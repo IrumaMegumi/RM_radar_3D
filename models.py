@@ -6,7 +6,8 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 import math
-
+from image_feature_extractor import resnet18
+from DepthLSSTransform import DepthLSSTransform
 from utils.utils import build_targets, to_cpu, parse_model_config
 
 def create_modules(module_defs):
@@ -24,10 +25,11 @@ def create_modules(module_defs):
             filters = int(module_def["filters"])
             kernel_size = int(module_def["size"])
             pad = (kernel_size - 1) // 2
+            in_channels = int(module_def["in_channels"]) if "in_channels" in module_def.keys() else output_filters[-1]
             modules.add_module(
                 f"conv_{module_i}",
                 nn.Conv2d(
-                    in_channels=output_filters[-1],
+                    in_channels=in_channels,
                     out_channels=filters,
                     kernel_size=kernel_size,
                     stride=int(module_def["stride"]),
@@ -138,7 +140,6 @@ class YOLOLayer(nn.Module):
         self.img_dim = img_dim
         num_samples = x.size(0)
         grid_size = x.size(2)
-
         prediction = (
             x.view(num_samples, self.num_anchors, self.num_classes + 7, grid_size, grid_size)
             .permute(0, 1, 3, 4, 2)
@@ -240,11 +241,14 @@ class YOLOLayer(nn.Module):
 
 class Darknet(nn.Module):
     """YOLOv3 object detection model"""
-
+    #config说明
+    #第一个是和模型所有有关的参数，包括学习率等等
+    #后面开始是神经网络层
+    #注意标有yolo的部分，这个是特征检测头，后续特征融合时要注意送到哪个头上
     def __init__(self, config_path, img_size=416):
         super(Darknet, self).__init__()
         self.module_defs = parse_model_config(config_path)
-        self.hyperparams, self.module_list = create_modules(self.module_defs)
+        self.hyperparams, self.module_list = create_modules(self.module_defs) #搭建模型，hyperparams是模型配置时候的参数，例如学习率等等，后面是模型列表，以torch.modulelist形式存储
         self.yolo_layers = [layer[0] for layer in self.module_list if hasattr(layer[0], "metrics")]
         self.img_size = img_size
         self.seen = 0
@@ -253,7 +257,7 @@ class Darknet(nn.Module):
     def forward(self, x, targets=None):
         img_dim = x.shape[2]
         loss = 0
-        layer_outputs, yolo_outputs = [], []
+        layer_outputs, yolo_outputs = [], [] #layer outputs记录每一个大层的输出，yolo outputs记录yolo检测头的输出
         for i, (module_def, module) in enumerate(zip(self.module_defs, self.module_list)):
             if module_def["type"] in ["convolutional", "upsample", "maxpool"]:
                 x = module(x)
@@ -270,6 +274,125 @@ class Darknet(nn.Module):
         yolo_outputs = to_cpu(torch.cat(yolo_outputs, 1))
         return yolo_outputs if targets is None else (loss, yolo_outputs)
 
+    #后面可能在加了BEVFusion后要重写
+    def load_darknet_weights(self, weights_path):
+        """Parses and loads the weights stored in 'weights_path'"""
+
+        # Open the weights file
+        with open(weights_path, "rb") as f:
+            header = np.fromfile(f, dtype=np.int32, count=5)  # First five are header values
+            self.header_info = header  # Needed to write header when saving weights
+            self.seen = header[3]  # number of images seen during training
+            weights = np.fromfile(f, dtype=np.float32)  # The rest are weights
+
+        # Establish cutoff for loading backbone weights
+        cutoff = None
+        if "darknet53.conv.74" in weights_path:
+            cutoff = 75
+        elif "yolov3-tiny.conv.15" in weights_path:
+            cutoff = 15
+
+        ptr = 0
+        for i, (module_def, module) in enumerate(zip(self.module_defs, self.module_list)):
+            if i == cutoff:
+                break
+            if module_def["type"] == "convolutional":
+                conv_layer = module[0]
+                if module_def["batch_normalize"]:
+                    # Load BN bias, weights, running mean and running variance
+                    bn_layer = module[1]
+                    num_b = bn_layer.bias.numel()  # Number of biases
+                    # Bias
+                    bn_b = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(bn_layer.bias)
+                    bn_layer.bias.data.copy_(bn_b)
+                    ptr += num_b
+                    # Weight
+                    bn_w = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(bn_layer.weight)
+                    bn_layer.weight.data.copy_(bn_w)
+                    ptr += num_b
+                    # Running Mean
+                    bn_rm = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(bn_layer.running_mean)
+                    bn_layer.running_mean.data.copy_(bn_rm)
+                    ptr += num_b
+                    # Running Var
+                    bn_rv = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(bn_layer.running_var)
+                    bn_layer.running_var.data.copy_(bn_rv)
+                    ptr += num_b
+                else:
+                    # Load conv. bias
+                    num_b = conv_layer.bias.numel()
+                    conv_b = torch.from_numpy(weights[ptr : ptr + num_b]).view_as(conv_layer.bias)
+                    conv_layer.bias.data.copy_(conv_b)
+                    ptr += num_b
+                # Load conv. weights
+                num_w = conv_layer.weight.numel()
+                conv_w = torch.from_numpy(weights[ptr : ptr + num_w]).view_as(conv_layer.weight)
+                conv_layer.weight.data.copy_(conv_w)
+                ptr += num_w
+
+class FusionDarknet(nn.Module):
+    """YOLOv3 object detection model with bevfusion"""
+    #config说明
+    #第一个是和模型所有有关的参数，包括学习率等等
+    #后面开始是神经网络层
+    #注意标有yolo的部分，这个是特征检测头，后续特征融合时要注意送到哪个头上
+    def __init__(self, config_path, img_size=416):
+        super(FusionDarknet, self).__init__()
+        self.yolo_module_defs = parse_model_config(config_path) #定义yolo模型的部分
+        self.hyperparams, self.module_list = create_modules(self.yolo_module_defs) #搭建模型，hyperparams是模型配置时候的参数，例如学习率等等，后面是模型列表，以torch.modulelist形式存储
+        self.yolo_layers = [layer[0] for layer in self.module_list if hasattr(layer[0], "metrics")]
+        self.img_size = img_size
+        self.seen = 0
+        self.header_info = np.array([0, 0, 0, self.seen, 0], dtype=np.int32)
+        self.image_feature_extractor=resnet18(pretrained=True)#提取图像特征用的部分，最后返回的是上采样结束后的特征
+        self.BEVTransform= DepthLSSTransform(in_channels=256, out_channels=80, image_size=[76,76], feature_size=[76,76],xbound=[0, 50.0, 0.2], ybound=[0, 25.0, 0.2], zbound=[-2.73, 1.27, 0.2], dbound=[1.0, 50.0, 0.5], downsample=2)
+        self.fusion_layer=nn.Conv2d(80,512,1)
+        self.fig_weights=0.1
+        self.lidar_weigths=0.9
+
+    def forward(self, x, fig_x, points, image_aug_matrix,lidar_aug_matrix, lss_calib_matrix, targets=None):
+        """
+        x:雷达的bev图
+        fig_x:图像原始数据
+        """
+        img_dim = x.shape[2]
+        fig_features=self.image_feature_extractor(fig_x)#图像特征
+        fig_features=fig_features.unsqueeze(1)
+        bev_fig_features=self.BEVTransform(
+            fig_features,
+            points,
+            lss_calib_matrix['lidar2image'],
+            lss_calib_matrix['cam_intrinsic'],
+            lss_calib_matrix['camera2lidar'],
+            image_aug_matrix,
+            lidar_aug_matrix
+        )#TODO：[3,80,125,63]，后面需要仔细审查一下维度问题
+        kernel_size_height = 125 // 19  # 约为6
+        kernel_size_width = 63 // 19   # 约为3
+        pooled_bev_fig_features = F.avg_pool2d(bev_fig_features, (kernel_size_height, kernel_size_width), stride=(kernel_size_height, kernel_size_width))
+        pooled_bev_fig_features = pooled_bev_fig_features[:, :, :19, :19]
+        fusion_bev_fig_features = self.fusion_layer(pooled_bev_fig_features)
+        loss = 0
+        layer_outputs, yolo_outputs = [], [] #layer outputs记录每一个大层的输出，yolo outputs记录yolo检测头的输出
+        for i, (module_def, module) in enumerate(zip(self.yolo_module_defs, self.module_list)):
+            if module_def["type"] in ["convolutional", "upsample", "maxpool"]:
+                x = module(x)
+                if(i==14):
+                    x = self.lidar_weigths * x + self.fig_weights * fusion_bev_fig_features
+            elif module_def["type"] == "route":
+                x = torch.cat([layer_outputs[int(layer_i)] for layer_i in module_def["layers"].split(",")], 1)
+            elif module_def["type"] == "shortcut":
+                layer_i = int(module_def["from"])
+                x = layer_outputs[-1] + layer_outputs[layer_i]
+            elif module_def["type"] == "yolo":
+                x, layer_loss = module[0](x, targets, img_dim)
+                loss += layer_loss
+                yolo_outputs.append(x)
+            layer_outputs.append(x)
+        yolo_outputs = to_cpu(torch.cat(yolo_outputs, 1))
+        return yolo_outputs if targets is None else (loss, yolo_outputs)
+
+    #后面可能在加了BEVFusion后要重写
     def load_darknet_weights(self, weights_path):
         """Parses and loads the weights stored in 'weights_path'"""
 

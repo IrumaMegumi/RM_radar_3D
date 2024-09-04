@@ -1,7 +1,6 @@
 numpy
 torch
 torchvision
-tensorflow
 terminaltables
 tqdm
 opencv-python

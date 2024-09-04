@@ -227,10 +227,14 @@ def point_transform(points, tx, ty, tz, rx=0, ry=0, rz=0):
 	#   points: (N, 3)
 	N = points.shape[0]
 	points = np.hstack([points, np.ones((N, 1))])
-
+	transform_matrix=np.eye(4)
 	mat1 = np.eye(4)
 	mat1[3, 0:3] = tx, ty, tz
 	points = np.matmul(points, mat1)
+
+	translation_matrix = np.eye(4)
+	translation_matrix[0:3, 3] = [tx, ty, tz]
+	transform_matrix = np.matmul(transform_matrix, translation_matrix)
 
 	if rx != 0:
 		mat = np.zeros((4, 4))
@@ -241,7 +245,7 @@ def point_transform(points, tx, ty, tz, rx=0, ry=0, rz=0):
 		mat[2, 1] = np.sin(rx)
 		mat[2, 2] = np.cos(rx)
 		points = np.matmul(points, mat)
-
+		transform_matrix = np.matmul(transform_matrix, mat)
 	if ry != 0:
 		mat = np.zeros((4, 4))
 		mat[1, 1] = 1
@@ -251,7 +255,7 @@ def point_transform(points, tx, ty, tz, rx=0, ry=0, rz=0):
 		mat[2, 0] = -np.sin(ry)
 		mat[2, 2] = np.cos(ry)
 		points = np.matmul(points, mat)
-
+		transform_matrix = np.matmul(transform_matrix, mat)
 	if rz != 0:
 		mat = np.zeros((4, 4))
 		mat[2, 2] = 1
@@ -261,8 +265,8 @@ def point_transform(points, tx, ty, tz, rx=0, ry=0, rz=0):
 		mat[1, 0] = np.sin(rz)
 		mat[1, 1] = np.cos(rz)
 		points = np.matmul(points, mat)
-
-	return points[:, 0:3]
+		transform_matrix = np.matmul(transform_matrix, mat)
+	return points[:, 0:3], transform_matrix
 
 def box_transform(boxes, tx, ty, tz, r=0, coordinate='lidar'):
 	# Input:
@@ -273,45 +277,78 @@ def box_transform(boxes, tx, ty, tz, r=0, coordinate='lidar'):
 		boxes, coordinate=coordinate)  # (N, 8, 3)
 	for idx in range(len(boxes_corner)):
 		if coordinate == 'lidar':
-			boxes_corner[idx] = point_transform(
+			boxes_corner[idx], _ = point_transform(
 				boxes_corner[idx], tx, ty, tz, rz=r)
 		else:
-			boxes_corner[idx] = point_transform(
+			boxes_corner[idx], _= point_transform(
 				boxes_corner[idx], tx, ty, tz, ry=r)
 
 	return corner_to_center_box3d(boxes_corner, coordinate=coordinate)
 
-def complex_yolo_pc_augmentation(lidar, labels, augData):
+def complex_yolo_pc_augmentation(lidar,labels, augData):
 	np.random.seed()
-	
 	gt_box3d = labels # (N', 7) x, y, z, h, w, l, r; camera coordinates
-
 	'''
 	Randomly choose between 0-2, equal probability
 	0: Rotation
 	1: Scaling
 	2: No augmentation
 	'''
-
 	choice = np.random.randint(low=0, high=3)
-
+	point_aug_matrix=np.eye(4)
 	if augData and choice == 0:
 		# global rotation
-		angle = np.random.uniform(-0.35, 0.35, ) # (-20, 20) degree
-		lidar[:, 0:3] = point_transform(lidar[:, 0:3], 0, 0, 0, rz=angle)
+		angle = np.radians(np.random.uniform(-10, 10))
+		lidar[:, 0:3], point_aug_matrix = point_transform(lidar[:, 0:3], 0, 0, 0, rz=angle)
 		lidar_center_gt_box3d = gt_box3d
 		lidar_center_gt_box3d = box_transform(lidar_center_gt_box3d, 0, 0, 0, r=angle, coordinate='lidar')
 
+	#TODO：缩放，对图像进行等效变换缩放
 	elif augData and choice == 1:
 		# global scaling
 		factor = np.random.uniform(0.95, 1.05)
 		lidar[:, 0:3] = lidar[:, 0:3] * factor
+		scaling_matrix = np.eye(4)
+		scaling_matrix[0, 0] = factor
+		scaling_matrix[1, 1] = factor
+		scaling_matrix[2, 2] = factor
+		point_aug_matrix = np.matmul(point_aug_matrix, scaling_matrix)
 		lidar_center_gt_box3d = gt_box3d
 		lidar_center_gt_box3d[:, 0:6] = lidar_center_gt_box3d[:, 0:6] * factor
 	else:
 		lidar_center_gt_box3d = gt_box3d
+	return lidar, point_aug_matrix, lidar_center_gt_box3d
 
-	return lidar, lidar_center_gt_box3d
+def complex_yolo_img_augmentation(imageData, angle_range=(-10, 10), scale_range=(0.95, 1.05)):
+    """
+    对2D RGB图像进行随机旋转和缩放，并保留变换矩阵
+    参数:
+    - imageData: 输入的2D RGB图像 (H, W, 3)
+    - angle_range: 旋转角度范围，默认为 (-10, 10) 度
+    - scale_range: 缩放因子范围，默认为 (0.95, 1.05)
+    返回:
+    - transformed_image: 变换后的图像
+    - transform_matrix: 变换矩阵，3x3大小的
+    """
+    # 获取图像的尺寸
+    h, w = imageData.shape[:2]
+    
+    # 生成随机的旋转角度和缩放因子
+    angle = np.random.uniform(angle_range[0], angle_range[1])
+    scale = np.random.uniform(scale_range[0], scale_range[1])
+
+    # 计算旋转中心
+    center = (w / 2, h / 2)
+
+    # 生成旋转矩阵，同时考虑缩放
+    transform_matrix = cv2.getRotationMatrix2D(center, angle, scale)
+
+    # 使用仿射变换对图像进行变换
+    transformed_image = cv2.warpAffine(imageData, transform_matrix, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT_101)
+
+    # 扩展旋转矩阵为3x3仿射矩阵，以便后续可能的进一步变换
+    transform_matrix = np.vstack([transform_matrix, [0, 0, 1]])
+    return transformed_image, transform_matrix
 
 def inverse_rigid_trans(Tr):
 	''' Inverse a rigid body transform matrix (3x4 as [R|t])
